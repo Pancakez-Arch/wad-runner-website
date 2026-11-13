@@ -1,0 +1,64 @@
+name: Build and deploy website
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write      # publish to GitHub Pages
+  id-token: write   # required by deploy-pages
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+env:
+  EMSDK_VERSION: 3.1.74
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out
+        uses: actions/checkout@v5
+
+      - name: Cache Emscripten SDK
+        uses: actions/cache@v5
+        with:
+          path: ~/emsdk
+          key: emsdk-${{ env.EMSDK_VERSION }}-${{ runner.os }}
+
+      - name: Install Emscripten
+        run: |
+          if [ ! -x ~/emsdk/emsdk ]; then
+            git clone --depth 1 --branch "$EMSDK_VERSION" https://github.com/emscripten-core/emsdk.git ~/emsdk
+          fi
+          ~/emsdk/emsdk install "$EMSDK_VERSION"
+          ~/emsdk/emsdk activate "$EMSDK_VERSION"
+
+      - name: Build engine and website
+        run: |
+          source ~/emsdk/emsdk_env.sh
+          bash scripts/build.sh
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload site
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

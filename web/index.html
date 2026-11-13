@@ -1,0 +1,591 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<title>WAD Runner</title>
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#0e0d0c">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="WAD Runner">
+<style>
+  :root { --bg:#0e0d0c; --panel:#1a1816; --line:#33302c; --fg:#ece6dc; --muted:#9a9184; --accent:#d9472b; }
+  * { box-sizing:border-box; }
+  html,body { margin:0; background:var(--bg); color:var(--fg); font:15px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif; }
+  main { max-width:900px; margin:0 auto; padding:32px 16px 48px; }
+  h1 { font-size:28px; margin:0 0 4px; letter-spacing:.02em; }
+  h1 span { color:var(--accent); }
+  p.sub { color:var(--muted); margin:0 0 24px; }
+  .panel { background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:20px; }
+  .drop { border:2px dashed var(--line); border-radius:8px; padding:28px 16px; text-align:center; cursor:pointer; transition:border-color .15s; }
+  .drop:hover,.drop.over { border-color:var(--accent); }
+  .drop strong { display:block; font-size:17px; margin-bottom:4px; }
+  .drop small { color:var(--muted); }
+  .row { display:flex; flex-wrap:wrap; gap:12px; align-items:center; margin-top:16px; }
+  .info { color:var(--muted); font-size:14px; flex:1 1 240px; min-height:1.5em; }
+  .info b { color:var(--fg); }
+  .err { color:#ff8a70; }
+  button { font:inherit; border:0; border-radius:6px; padding:10px 20px; cursor:pointer; background:var(--accent); color:#fff; font-weight:600; }
+  button:disabled { opacity:.4; cursor:not-allowed; }
+  button.ghost { background:transparent; color:var(--fg); border:1px solid var(--line); font-weight:500; }
+  label.pw { color:var(--muted); font-size:14px; cursor:pointer; text-decoration:underline; }
+  #game { display:none; }
+  #game.on { display:block; }
+  .screen { position:relative; background:#000; border-radius:8px; overflow:hidden; }
+  canvas { display:block; width:100%; aspect-ratio:8/5; image-rendering:pixelated; outline:none; }
+  .screen:fullscreen { display:flex; align-items:center; justify-content:center; }
+  .screen:fullscreen canvas { width:auto; height:100%; max-width:100%; }
+  #touch { position:absolute; inset:0; pointer-events:none; user-select:none; -webkit-user-select:none; touch-action:none; }
+  #touch .t { pointer-events:auto; touch-action:none; position:absolute; background:rgba(255,255,255,.14); color:rgba(255,255,255,.85);
+    border:1px solid rgba(255,255,255,.28); border-radius:50%; font-weight:700; font-size:13px; padding:0;
+    width:clamp(40px,11vmin,72px); height:clamp(40px,11vmin,72px); -webkit-tap-highlight-color:transparent; }
+  #touch .t.on { background:rgba(217,71,43,.6); }
+  #touch .tl { position:absolute; top:8px; left:8px; right:8px; display:flex; gap:6px; pointer-events:none; }
+  #touch .tl .t, #touch .acts .sm { position:static; border-radius:6px; width:auto; height:auto; padding:6px 10px; font-size:11px; }
+  #touch .dpad { position:absolute; left:10px; bottom:10px; width:calc(3 * clamp(40px,11vmin,72px)); height:calc(3 * clamp(40px,11vmin,72px)); }
+  #touch .up { left:33.3%; top:0; } #touch .dn { left:33.3%; bottom:0; }
+  #touch .lf { left:0; top:33.3%; } #touch .rt { right:0; top:33.3%; }
+  #touch .acts { position:absolute; right:10px; bottom:10px; display:grid; grid-template-columns:auto auto; gap:8px; align-items:end; justify-items:center; }
+  #touch .acts .t { position:static; }
+  #touch .fire { width:clamp(52px,15vmin,96px); height:clamp(52px,15vmin,96px); background:rgba(217,71,43,.35); }
+  .bar { display:flex; flex-wrap:wrap; gap:8px; margin-top:12px; align-items:center; }
+  .bar .status { color:var(--muted); font-size:13px; margin-left:auto; }
+  .bar .status.err { color:#ff8a70; font-weight:600; }
+  details { margin-top:24px; color:var(--muted); font-size:14px; }
+  summary { cursor:pointer; color:var(--fg); }
+  table { border-collapse:collapse; margin-top:8px; }
+  td { padding:3px 14px 3px 0; vertical-align:top; }
+  kbd { background:#2a2724; border:1px solid var(--line); border-radius:4px; padding:1px 6px; font-size:12px; color:var(--fg); }
+  footer { margin-top:32px; color:var(--muted); font-size:12px; }
+  footer a { color:var(--muted); }
+  .remember { margin-top:14px; display:flex; flex-wrap:wrap; gap:10px; align-items:center; font-size:14px; color:var(--muted); }
+  .remember button { padding:4px 10px; font-size:13px; }
+  .install { margin-top:16px; padding:12px 14px; border:1px solid var(--line); border-radius:8px; font-size:14px; color:var(--muted);
+    display:flex; flex-wrap:wrap; gap:10px; align-items:center; justify-content:space-between; }
+  .install b { color:var(--fg); }
+  .rotate { display:none; }
+
+  /* App-style layout on phones/tablets and when installed: the game fills the screen. */
+  body.immersive { overflow:hidden; background:#000; }
+  body.immersive main { max-width:none; padding:0; }
+  body.immersive main > h1, body.immersive main > p.sub, body.immersive details, body.immersive footer { display:none; }
+  body.immersive .screen { position:fixed; inset:0; border-radius:0; display:flex; align-items:center; justify-content:center;
+    padding:env(safe-area-inset-top,0px) env(safe-area-inset-right,0px) env(safe-area-inset-bottom,0px) env(safe-area-inset-left,0px); }
+  body.immersive canvas { width:min(100%, calc(100vh * 1.6)); width:min(100%, calc(100dvh * 1.6)); height:auto; }
+  body.immersive .bar { position:fixed; z-index:5; margin:0; top:calc(env(safe-area-inset-top,0px) + 8px); right:calc(env(safe-area-inset-right,0px) + 8px); }
+  body.immersive .bar button { padding:6px 10px; font-size:11px; background:rgba(0,0,0,.35); border-color:rgba(255,255,255,.28); color:rgba(255,255,255,.85); }
+  body.immersive .bar .status { display:none; }
+  body.immersive .bar .status.err { display:block; position:fixed; left:16px; right:16px; top:40%; text-align:center; font-size:15px;
+    background:rgba(0,0,0,.8); padding:16px; border-radius:8px; margin:0; }
+  body.immersive #touch .tl { top:calc(env(safe-area-inset-top,0px) + 8px); left:calc(env(safe-area-inset-left,0px) + 8px); right:auto; }
+  body.immersive #touch .dpad { left:calc(env(safe-area-inset-left,0px) + 12px); bottom:calc(env(safe-area-inset-bottom,0px) + 12px); }
+  body.immersive #touch .acts { right:calc(env(safe-area-inset-right,0px) + 12px); bottom:calc(env(safe-area-inset-bottom,0px) + 12px); }
+  @media (orientation: portrait) {
+    body.immersive .rotate { display:block; position:fixed; left:0; right:0; top:22%; text-align:center; color:rgba(255,255,255,.6); font-size:14px; pointer-events:none; }
+  }
+</style>
+</head>
+<body>
+<main>
+  <h1>WAD <span>Runner</span></h1>
+  <p class="sub">Play Doom, Ultimate Doom, Doom II or Final Doom in your browser with your own IWAD. Files never leave your device.</p>
+
+  <section id="setup" class="panel">
+    <div class="drop" id="drop" tabindex="0">
+      <strong>Choose or drop your IWAD</strong>
+      <small>doom1.wad · doom.wad · doom2.wad · plutonia.wad · tnt.wad · freedoom</small>
+    </div>
+    <input type="file" id="iwad" accept=".wad,.WAD" hidden>
+    <input type="file" id="pwads" accept=".wad,.WAD,.deh,.DEH" multiple hidden>
+    <div class="row">
+      <div class="info" id="info">No WAD loaded.</div>
+      <label class="pw" for="pwads">+ add mods (PWAD/DEH)</label>
+      <button id="start" disabled>Start</button>
+    </div>
+    <div class="remember" id="remembered" hidden>
+      <span id="rememberedText"></span>
+      <button class="ghost" id="forget">Forget</button>
+    </div>
+    <div class="install" id="installBox" hidden>
+      <span id="installText"><b>Install as an app</b> for a home-screen icon, fullscreen play and offline use.</span>
+      <button id="installBtn" hidden>Install</button>
+    </div>
+  </section>
+
+  <section id="game">
+    <div class="screen" id="screen">
+      <canvas id="canvas" tabindex="-1" oncontextmenu="event.preventDefault()"></canvas>
+      <div id="touch" hidden>
+        <div class="tl">
+          <button class="t sm" data-k="27">MENU</button>
+          <button class="t sm" data-k="13">ENTER</button>
+          <button class="t sm" data-k="121">Y</button>
+          <button class="t sm" data-k="9">MAP</button>
+        </div>
+        <div class="dpad">
+          <button class="t up" data-k="173" aria-label="Forward">▲</button>
+          <button class="t lf" data-k="172" aria-label="Turn left">◀</button>
+          <button class="t rt" data-k="174" aria-label="Turn right">▶</button>
+          <button class="t dn" data-k="175" aria-label="Back">▼</button>
+        </div>
+        <div class="acts">
+          <button class="t sm" data-k="run">RUN</button>
+          <button class="t sm" data-k="weapon">WPN</button>
+          <button class="t use" data-k="162">USE</button>
+          <button class="t fire" data-k="163">FIRE</button>
+        </div>
+      </div>
+    </div>
+    <div class="rotate">Turn your phone sideways for a bigger view ↻</div>
+    <div class="bar">
+      <button class="ghost" id="fs">Fullscreen</button>
+      <button class="ghost" id="reload">Change WAD</button>
+      <span class="status" id="status">Loading…</span>
+    </div>
+  </section>
+
+  <details>
+    <summary>Controls</summary>
+    <table>
+      <tr><td><kbd>↑</kbd> <kbd>↓</kbd> <kbd>←</kbd> <kbd>→</kbd></td><td>Move / turn</td></tr>
+      <tr><td>Mouse</td><td>Click the game to capture; move to turn and look up/down. <kbd>Esc</kbd> releases.</td></tr>
+      <tr><td><kbd>PgUp</kbd> / <kbd>PgDn</kbd>, <kbd>End</kbd></td><td>Look up / down, re-centre view</td></tr>
+      <tr><td><kbd>Ctrl</kbd> or left click</td><td>Fire</td></tr>
+      <tr><td><kbd>Space</kbd> or right click</td><td>Open doors / use switches</td></tr>
+      <tr><td><kbd>Shift</kbd></td><td>Run</td></tr>
+      <tr><td><kbd>W</kbd> <kbd>S</kbd></td><td>Walk forward / back</td></tr>
+      <tr><td><kbd>A</kbd> <kbd>D</kbd> or <kbd>Alt</kbd> + <kbd>←</kbd>/<kbd>→</kbd></td><td>Strafe left / right</td></tr>
+      <tr><td><kbd>1</kbd>–<kbd>7</kbd></td><td>Select weapon</td></tr>
+      <tr><td><kbd>Tab</kbd></td><td>Automap</td></tr>
+      <tr><td><kbd>Esc</kbd></td><td>Menu</td></tr>
+      <tr><td><kbd>F2</kbd> / <kbd>F3</kbd></td><td>Save / load game (saves are kept in this browser)</td></tr>
+    </table>
+    <p>Phone/tablet: on-screen controls appear automatically. Tap Fullscreen and turn the phone sideways. RUN toggles on and off; WPN cycles weapons; Y answers yes/no prompts.</p>
+    <p>Tip: use Fullscreen so the browser doesn't catch keys like <kbd>Ctrl</kbd>+<kbd>W</kbd>. Music uses the OPL (AdLib/Sound Blaster) synth with the instruments from your WAD.</p>
+  </details>
+
+  <footer>
+    Engine: <a href="https://github.com/ozkl/doomgeneric">doomgeneric</a> (based on Chocolate Doom / id Software's Doom source), GPL-2.0, see <a href="LICENSE.txt">LICENSE.txt</a>. No game data is included.
+  </footer>
+</main>
+
+<script>
+(() => {
+  const $ = id => document.getElementById(id);
+  let iwad = null;        // { name, bytes, title }
+  let pwads = [];         // [{ name, bytes }]
+
+  // Known IWADs by the name doomgeneric expects (it identifies the game by filename).
+  const KNOWN = ['doom2.wad','plutonia.wad','tnt.wad','doom.wad','doom1.wad','chex.wad','freedoom1.wad','freedoom2.wad'];
+
+  function readLumps(bytes) {
+    const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    if (bytes.length < 12) throw new Error('File is too small to be a WAD.');
+    const id = String.fromCharCode(...bytes.subarray(0, 4));
+    if (id !== 'IWAD' && id !== 'PWAD') throw new Error('Not a WAD file.');
+    const n = dv.getInt32(4, true), off = dv.getInt32(8, true);
+    if (n < 0 || off < 0 || off + n * 16 > bytes.length) throw new Error('WAD directory is corrupt.');
+    const names = new Set();
+    for (let i = 0; i < n; i++) {
+      let s = '';
+      for (let j = 0; j < 8; j++) { const c = bytes[off + i * 16 + 8 + j]; if (!c) break; s += String.fromCharCode(c); }
+      names.add(s.toUpperCase());
+    }
+    return { id, names };
+  }
+
+  // Pick the filename doomgeneric needs so it runs the right game mode.
+  function identify(fileName, bytes) {
+    const { id, names } = readLumps(bytes);
+    if (id !== 'IWAD') throw new Error('This is a PWAD (mod). Pick the base game IWAD first, then add mods.');
+    const lower = fileName.toLowerCase();
+    if (KNOWN.includes(lower)) {
+      const t = { 'doom2.wad':'Doom II','plutonia.wad':'Final Doom: Plutonia','tnt.wad':'Final Doom: TNT','doom.wad':names.has('E4M1') ? 'Ultimate Doom' : 'Doom (registered)','doom1.wad':'Doom (shareware)','chex.wad':'Chex Quest','freedoom1.wad':'Freedoom: Phase 1','freedoom2.wad':'Freedoom: Phase 2' }[lower];
+      return { name: lower, title: t };
+    }
+    if (names.has('MAP01')) return { name: 'doom2.wad', title: 'Doom II-format game' };
+    if (names.has('E2M1')) return { name: 'doom.wad', title: names.has('E4M1') ? 'Ultimate Doom' : 'Doom (registered)' };
+    if (names.has('E1M1')) return { name: 'doom1.wad', title: 'Doom (shareware)' };
+    throw new Error('Could not find any maps in this IWAD.');
+  }
+
+  function fmtMB(n) { return (n / 1048576).toFixed(1) + ' MB'; }
+
+  function refreshInfo(msg, isErr) {
+    const el = $('info');
+    if (msg) { el.innerHTML = ''; el.textContent = msg; el.className = 'info' + (isErr ? ' err' : ''); }
+    else if (iwad) {
+      el.className = 'info';
+      el.innerHTML = '';
+      const b = document.createElement('b'); b.textContent = iwad.title;
+      el.append(b, ` (${iwad.file}, ${fmtMB(iwad.bytes.length)})`);
+      if (pwads.length) el.append(' + ' + pwads.map(p => p.name).join(', '));
+    }
+    $('start').disabled = !iwad;
+  }
+
+  // ---- Remember the chosen WAD(s) in IndexedDB so the app starts with one tap ----
+  const store = {
+    db: null,
+    open() {
+      if (this.db) return this.db;
+      this.db = new Promise((res, rej) => {
+        const r = indexedDB.open('wadrunner', 1);
+        r.onupgradeneeded = () => r.result.createObjectStore('files');
+        r.onsuccess = () => res(r.result);
+        r.onerror = () => rej(r.error);
+      });
+      return this.db;
+    },
+    async op(mode, fn) {
+      const db = await this.open();
+      return new Promise((res, rej) => {
+        const tx = db.transaction('files', mode);
+        const req = fn(tx.objectStore('files'));
+        tx.oncomplete = () => res(req && req.result);
+        tx.onerror = tx.onabort = () => rej(tx.error);
+      });
+    },
+    get(k) { return this.op('readonly', s => s.get(k)); },
+    set(k, v) { return this.op('readwrite', s => s.put(v, k)); },
+    del(k) { return this.op('readwrite', s => s.delete(k)); },
+  };
+  async function remember() {
+    try {
+      await store.set('iwad', { file: iwad.file, name: iwad.name, title: iwad.title, bytes: iwad.bytes });
+      await store.set('pwads', pwads.map(p => ({ name: p.name, bytes: p.bytes })));
+      if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
+      showRemembered();
+    } catch (e) { console.warn('Could not remember WAD', e); }
+  }
+  function showRemembered() {
+    $('remembered').hidden = !iwad;
+    if (iwad) $('rememberedText').textContent = '✓ Remembered on this device, so next time just press Start.';
+  }
+  $('forget').onclick = async () => {
+    try { await store.del('iwad'); await store.del('pwads'); } catch (_) {}
+    iwad = null; pwads = [];
+    $('remembered').hidden = true;
+    refreshInfo('No WAD loaded.');
+  };
+  (async () => {
+    try {
+      const saved = await store.get('iwad');
+      if (saved && !iwad) {
+        iwad = { ...saved, bytes: new Uint8Array(saved.bytes) };
+        pwads = ((await store.get('pwads')) || []).map(p => ({ name: p.name, bytes: new Uint8Array(p.bytes) }));
+        refreshInfo();
+        showRemembered();
+      }
+    } catch (e) { console.warn('No saved WAD', e); }
+  })();
+
+  async function loadIwad(file) {
+    try {
+      const bytes = new Uint8Array(await file.arrayBuffer());
+      const id = identify(file.name, bytes);
+      iwad = { file: file.name, name: id.name, title: id.title, bytes };
+      pwads = [];
+      refreshInfo();
+      remember();
+    } catch (e) { iwad = null; refreshInfo(e.message, true); }
+  }
+
+  async function loadPwads(files) {
+    pwads = [];
+    for (const f of files) {
+      const bytes = new Uint8Array(await f.arrayBuffer());
+      const safe = f.name.replace(/[^A-Za-z0-9._-]/g, '_');
+      if (/\.wad$/i.test(safe)) {
+        try { if (readLumps(bytes).id !== 'PWAD') { refreshInfo(`${f.name} is an IWAD, not a mod.`, true); return; } }
+        catch (e) { refreshInfo(`${f.name}: ${e.message}`, true); return; }
+      }
+      pwads.push({ name: safe, bytes });
+    }
+    refreshInfo();
+    if (iwad) remember();
+  }
+
+  // iOS greys out ".wad" files when the picker filters by extension, so don't filter there.
+  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  if (isIOS) { $('iwad').removeAttribute('accept'); $('pwads').removeAttribute('accept'); }
+
+  // ---- Installable app (PWA) ----
+  const standalone = matchMedia('(display-mode: standalone), (display-mode: fullscreen)').matches || navigator.standalone === true;
+  if ('serviceWorker' in navigator && window.isSecureContext) {
+    navigator.serviceWorker.register('sw.js').catch(e => console.warn('Service worker failed', e));
+  }
+  let installEvent = null;
+  window.addEventListener('beforeinstallprompt', e => {
+    e.preventDefault();
+    installEvent = e;
+    $('installBox').hidden = false;
+    $('installBtn').hidden = false;
+  });
+  $('installBtn').onclick = async () => {
+    if (!installEvent) return;
+    installEvent.prompt();
+    await installEvent.userChoice.catch(() => {});
+    installEvent = null;
+    $('installBox').hidden = true;
+  };
+  window.addEventListener('appinstalled', () => { $('installBox').hidden = true; });
+  if (isIOS && !standalone) {
+    $('installBox').hidden = false;
+    $('installText').innerHTML = '<b>Install as an app:</b> tap the Share button <span aria-hidden="true">⎋</span> then <b>“Add to Home Screen”</b>.';
+  }
+  const canFullscreen = !!(document.documentElement.requestFullscreen || document.documentElement.webkitRequestFullscreen);
+  if (!canFullscreen || standalone) $('fs').hidden = true;
+
+  const drop = $('drop');
+  drop.onclick = () => $('iwad').click();
+  drop.onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); $('iwad').click(); } };
+  $('iwad').onchange = e => e.target.files[0] && loadIwad(e.target.files[0]);
+  $('pwads').onchange = e => loadPwads([...e.target.files]);
+  drop.ondragover = e => { e.preventDefault(); drop.classList.add('over'); };
+  drop.ondragleave = () => drop.classList.remove('over');
+  drop.ondrop = e => {
+    e.preventDefault(); drop.classList.remove('over');
+    const fs = [...e.dataTransfer.files];
+    if (fs[0]) loadIwad(fs[0]).then(() => fs.length > 1 && loadPwads(fs.slice(1)));
+  };
+
+  $('reload').onclick = () => location.reload();
+  $('fs').onclick = () => {
+    // In app layout the whole page is the game, so fullscreen the page (keeps the buttons visible).
+    const el = document.body.classList.contains('immersive') ? document.documentElement : $('screen');
+    const p = (el.requestFullscreen || el.webkitRequestFullscreen).call(el);
+    if (p && p.then) p.then(() => screen.orientation && screen.orientation.lock && screen.orientation.lock('landscape').catch(() => {})).catch(() => {});
+    $('canvas').focus();
+  };
+
+  // Browser key -> Doom key code (see doomkeys.h).
+  const DK = {
+    ArrowRight:0xae, ArrowLeft:0xac, ArrowUp:0xad, ArrowDown:0xaf,
+    Control:0xa3, ' ':0xa2, Shift:0x80+0x36, Alt:0x80+0x38,
+    Escape:27, Enter:13, Tab:9, Backspace:0x7f, Pause:0xff,
+    '=':0x3d, '+':0x3d, '-':0x2d,
+    F1:0x80+0x3b, F2:0x80+0x3c, F3:0x80+0x3d, F4:0x80+0x3e, F5:0x80+0x3f, F6:0x80+0x40,
+    F7:0x80+0x41, F8:0x80+0x42, F9:0x80+0x43, F10:0x80+0x44, F11:0x80+0x57, F12:0x80+0x58,
+  };
+  function doomKey(e) {
+    if (e.code === 'Space') return 0xa2;
+    if (DK[e.key] !== undefined) return DK[e.key];
+    if (e.key.length === 1) { const c = e.key.toLowerCase().charCodeAt(0); if (c > 31 && c < 127) return c; }
+    // Shifted digits/letters: fall back to the physical key.
+    const m = /^(?:Key([A-Z])|Digit(\d))$/.exec(e.code);
+    if (m) return (m[1] ? m[1].toLowerCase() : m[2]).charCodeAt(0);
+    return 0;
+  }
+  let playing = false;
+  const held = new Set();
+  // WASD (physical keys, any layout): W/S walk, A/D strafe. The letter itself is
+  // still sent too, so cheat codes like IDDQD keep working.
+  const WASD = { KeyW: 0xad, KeyS: 0xaf, KeyA: 0xa0, KeyD: 0xa1 };
+  // Free-look (engine extension): -60 (down) .. +60 (up). Mouse up/down, PgUp/PgDn, End re-centres.
+  let look = 0;
+  function setLook(v) {
+    look = Math.max(-60, Math.min(60, v));
+    if (window.Module && Module._dg_set_look) Module._dg_set_look(Math.round(look));
+  }
+  let lookKeyTimer = null;
+  function lookKeys(e, down) {
+    if (!['PageUp', 'PageDown', 'End'].includes(e.key)) return false;
+    e.preventDefault();
+    clearInterval(lookKeyTimer);
+    if (down && e.key === 'End') setLook(0);
+    else if (down) {
+      const step = e.key === 'PageUp' ? 3 : -3;
+      setLook(look + step);
+      lookKeyTimer = setInterval(() => setLook(look + step), 30);
+    }
+    return true;
+  }
+  function onKey(e, down) {
+    if (!playing) return;
+    if (lookKeys(e, down)) return;
+    const k = doomKey(e);
+    if (!k) return;
+    e.preventDefault();
+    if (down && e.repeat) return;
+    for (const key of [k, WASD[e.code]]) {
+      if (!key) continue;
+      if (down) held.add(key); else held.delete(key);
+      Module._dg_push_key(down ? 1 : 0, key);
+    }
+  }
+  window.addEventListener('keydown', e => onKey(e, true), { capture: true });
+  window.addEventListener('keyup', e => onKey(e, false), { capture: true });
+  // Release everything if the window loses focus, so the player doesn't keep running.
+  window.addEventListener('blur', () => { if (playing) { for (const k of held) Module._dg_push_key(0, k); held.clear(); } });
+
+  // Browsers only allow audio after a user gesture; nudge SDL's AudioContext awake.
+  function resumeAudio() {
+    const ctx = window.Module && Module.SDL2 && Module.SDL2.audioContext;
+    if (ctx && ctx.state === 'suspended') ctx.resume();
+  }
+  ['pointerdown', 'keydown', 'touchend'].forEach(t => window.addEventListener(t, resumeAudio, { capture: true }));
+
+  // ---- Mouse: click to capture, move to turn, left = fire, right = use ----
+  function setupMouse(canvas) {
+    let buttons = 0;
+    const locked = () => document.pointerLockElement === canvas;
+    const send = dx => Module._dg_push_mouse(buttons, dx);
+    canvas.addEventListener('mousedown', e => {
+      if (!playing) return;
+      canvas.focus();
+      if (!locked()) {
+        if (!matchMedia('(pointer: coarse)').matches) {
+          const p = canvas.requestPointerLock();
+          if (p && p.catch) p.catch(() => {});
+        }
+        return; // the click that captures the mouse doesn't also shoot
+      }
+      if (e.button === 0) { buttons |= 1; send(0); }
+      if (e.button === 2) Module._dg_push_key(1, 0xa2);
+    });
+    window.addEventListener('mouseup', e => {
+      if (!playing) return;
+      if (e.button === 0 && buttons & 1) { buttons &= ~1; send(0); }
+      if (e.button === 2) Module._dg_push_key(0, 0xa2);
+    });
+    document.addEventListener('mousemove', e => {
+      if (playing && locked() && e.movementX) send(Math.round(e.movementX * 4));
+      if (playing && locked() && e.movementY) setLook(look - e.movementY * 0.25);
+    });
+    document.addEventListener('pointerlockchange', () => {
+      if (!locked() && buttons) { buttons = 0; send(0); }
+      $('status').dataset.mouse = locked() ? '1' : '';
+      updateStatus();
+    });
+  }
+
+  // ---- Touch controls ----
+  function setupTouch() {
+    const pad = $('touch');
+    const show = () => { pad.hidden = false; document.body.classList.add('touching'); };
+    if (matchMedia('(pointer: coarse)').matches) show();
+    window.addEventListener('touchstart', show, { once: true, passive: true });
+
+    let weapon = 1;
+    let runLatched = false;
+    for (const b of pad.querySelectorAll('[data-k]')) {
+      const key = () => {
+        const k = b.dataset.k;
+        if (k === 'weapon') { weapon = weapon % 7 + 1; return 48 + weapon; }
+        return Number(k);
+      };
+      let active = null;
+      const down = e => {
+        e.preventDefault();
+        if (!playing || active !== null) return;
+        if (b.dataset.k === 'run') {             // Run is a toggle on touch
+          runLatched = !runLatched;
+          b.classList.toggle('on', runLatched);
+          Module._dg_push_key(runLatched ? 1 : 0, 0x80 + 0x36);
+          return;
+        }
+        active = key();
+        b.classList.add('on');
+        Module._dg_push_key(1, active);
+        if (b.setPointerCapture) try { b.setPointerCapture(e.pointerId); } catch (_) {}
+      };
+      const up = e => {
+        if (active === null) return;
+        e.preventDefault();
+        Module._dg_push_key(0, active);
+        active = null;
+        b.classList.remove('on');
+      };
+      b.addEventListener('pointerdown', down);
+      b.addEventListener('pointerup', up);
+      b.addEventListener('pointercancel', up);
+      b.addEventListener('lostpointercapture', up);
+      b.addEventListener('contextmenu', e => e.preventDefault());
+    }
+  }
+
+  function stopGame(msg) {
+    playing = false;
+    if (document.pointerLockElement) document.exitPointerLock();
+    const s = $('status');
+    s.textContent = msg;
+    s.classList.add('err');
+    $('touch').hidden = true;
+  }
+  window.addEventListener('error', e => {
+    if (playing && e.error && !/ExitStatus|unwind/.test(String(e.error))) stopGame('The game crashed: ' + e.message);
+  });
+
+  function updateStatus() {
+    const s = $('status');
+    if (!playing) return;
+    s.textContent = s.dataset.mouse
+      ? 'Mouse captured: move to turn and look up/down, left click fire, right click use. Esc releases it.'
+      : 'Running: ' + $('info').textContent + '. Click the game to capture the mouse.';
+  }
+
+  $('start').onclick = () => {
+    $('start').disabled = true;
+    $('setup').style.display = 'none';
+    $('game').classList.add('on');
+    if (standalone || matchMedia('(pointer: coarse)').matches) {
+      document.body.classList.add('immersive');
+      $('reload').textContent = 'Exit';
+    }
+    const status = $('status');
+    const canvas = $('canvas');
+    setupMouse(canvas);
+    setupTouch();
+
+    window.Module = {
+      canvas,
+      print: t => console.log(t),
+      printErr: t => console.warn(t),
+      setStatus: t => { if (t && !playing && !status.classList.contains('err')) status.textContent = t; },
+      onDoomError(msg) { stopGame('Doom error: ' + msg.trim()); },
+      onDoomQuit() { stopGame('You quit the game. Press "Change WAD" to start again.'); },
+      onRuntimeInitialized() {
+        const FS = Module.FS;
+        // Per-game folder, persisted to IndexedDB, holds config + savegames.
+        const dir = '/home/web_user/' + iwad.name.replace('.wad', '');
+        FS.mkdirTree(dir);
+        FS.mount(Module.IDBFS, {}, dir);
+        FS.syncfs(true, err => {
+          if (err) console.warn('Could not restore saves', err);
+          FS.writeFile('/' + iwad.name, iwad.bytes);
+          const args = ['-iwad', '/' + iwad.name];
+          const wads = pwads.filter(p => /\.wad$/i.test(p.name));
+          const dehs = pwads.filter(p => /\.(deh|bex)$/i.test(p.name));
+          for (const p of pwads) FS.writeFile('/' + p.name, p.bytes);
+          if (wads.length) args.push('-file', ...wads.map(p => '/' + p.name));
+          if (dehs.length) args.push('-deh', ...dehs.map(p => '/' + p.name));
+          pwads = [];
+          FS.chdir(dir);
+          canvas.focus();
+          // Flush saves/config to IndexedDB every few seconds and when leaving.
+          let busy = false;
+          const flush = () => { if (busy) return; busy = true; FS.syncfs(false, () => { busy = false; }); };
+          setInterval(flush, 5000);
+          document.addEventListener('visibilitychange', () => document.hidden && flush());
+          window.addEventListener('pagehide', flush);
+          playing = true;
+          updateStatus();
+          try { Module.callMain(args); }
+          catch (e) { if (e !== 'unwind' && e?.name !== 'ExitStatus') { status.textContent = 'Error: ' + e; throw e; } }
+        });
+      },
+    };
+    const s = document.createElement('script');
+    s.src = 'doomgeneric.js';
+    s.onerror = () => { status.textContent = 'Could not load doomgeneric.js. Serve this folder over http(s), not file://.'; };
+    document.body.appendChild(s);
+  };
+})();
+</script>
+</body>
+</html>
